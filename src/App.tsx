@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   FileText,
   Copy,
@@ -10,15 +10,60 @@ import {
   CheckCircle2,
   Circle,
   Eye,
-  Edit3
+  Edit3,
+  FolderOpen,
+  Upload,
+  Sparkles,
+  X,
+  FileCode
 } from "lucide-react";
 
-const EMPTY_DATA = {
+export interface TaskStep {
+  id: string;
+  path: string;
+  task: string;
+  done: boolean;
+}
+
+export interface EdgeCase {
+  trigger: string;
+  action: string;
+}
+
+export interface DodItem {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
+export interface TaskSpecData {
+  id: string;
+  title: string;
+  priority: string;
+  targetDate: string;
+  assignee: string;
+  estimateHours: number;
+  problemStatement: string;
+  targetOutcome: string;
+  inScope: string[];
+  outScope: string[];
+  steps: TaskStep[];
+  edgeCases: EdgeCase[];
+  dod: DodItem[];
+}
+
+export interface SavedDocRecord {
+  docId: string;
+  updatedAt: number;
+  data: TaskSpecData;
+}
+
+const EMPTY_DATA: TaskSpecData = {
   id: "",
   title: "",
   priority: "P2 - Medium",
   targetDate: "",
-  assignee: "Rama Arly cendikiarizky",
+  assignee: "Rama Arly Cendikiarizky",
   estimateHours: 0,
   problemStatement: "",
   targetOutcome: "",
@@ -29,10 +74,120 @@ const EMPTY_DATA = {
   dod: [{ id: "d1", label: "", done: false }]
 };
 
+const TEMPLATES: Record<string, { label: string; data: TaskSpecData }> = {
+  blank: {
+    label: "Kosong (Blank Canvas)",
+    data: EMPTY_DATA
+  },
+  bugfix: {
+    label: "Investigasi & Perbaikan Bug",
+    data: {
+      id: "BUG-",
+      title: "Investigasi dan Penanganan Error Input",
+      priority: "P0 - Critical Blocker",
+      targetDate: "",
+      assignee: "Rama Arly Cendikiarizky",
+      estimateHours: 4,
+      problemStatement: "Terjadi error unhandled exception saat user mengunggah berkas tanpa header kolom yang sesuai.",
+      targetOutcome: "Validasi format berkas sebelum parsing dan notifikasi error yang jelas bagi pengguna.",
+      inScope: [
+        "Validasi ekstensi dan schema header file",
+        "Penambahan safe fallback try-catch",
+        "Logging error yang dapat dilacak"
+      ],
+      outScope: [
+        "Pemberian opsi konversi format file otomatis",
+        "Redesain total UI form"
+      ],
+      steps: [
+        { id: "s1", path: "src/utils/validator.ts", task: "Buat unit test pengecekan header kolom file", done: false },
+        { id: "s2", path: "src/services/parser.ts", task: "Tambahkan validasi boundary sebelum loop pembacaan", done: false }
+      ],
+      edgeCases: [
+        { trigger: "File kosong (0 KB)", action: "Tampilkan toast peringatan dan batalkan proses" },
+        { trigger: "Koneksi terputus saat upload", action: "Retry otomatis maksimal 3 kali" }
+      ],
+      dod: [
+        { id: "d1", label: "Unit test validator lulus 100%", done: false },
+        { id: "d2", label: "Tidak ada silent fail saat file corrupt diuji", done: false }
+      ]
+    }
+  },
+  feature: {
+    label: "Pengembangan Fitur / PRD",
+    data: {
+      id: "FEAT-",
+      title: "Implementasi Modul Ekspor Laporan Otomatis",
+      priority: "P1 - High",
+      targetDate: "",
+      assignee: "Rama Arly Cendikiarizky",
+      estimateHours: 12,
+      problemStatement: "Pengguna membutuhkan ringkasan rekapitulasi data dalam format PDF/Excel siap cetak.",
+      targetOutcome: "Tombol cetak dan ekspor menghasilkan berkas yang rapi sesuai format standar perusahaan.",
+      inScope: [
+        "Pembuatan generator layout tabel PDF",
+        "Pengelompokan data berdasarkan kategori dan tanggal",
+        "Kompilasi client-side tanpa beban server"
+      ],
+      outScope: [
+        "Pengiriman berkas otomatis via email terjadwal",
+        "Penyimpanan arsip di cloud storage pihak ketiga"
+      ],
+      steps: [
+        { id: "s1", path: "src/components/ReportView.tsx", task: "Desain layout tampilan cetak CSS print-friendly", done: false },
+        { id: "s2", path: "src/hooks/useExport.ts", task: "Integrasi library pembuat berkas PDF/Excel", done: false }
+      ],
+      edgeCases: [
+        { trigger: "Data berisi lebih dari 1000 baris", action: "Aktifkan pagination tabel saat proses render" }
+      ],
+      dod: [
+        { id: "d1", label: "Tampilan hasil cetak bersih dan tidak terpotong antar halaman", done: false },
+        { id: "d2", label: "File hasil unduhan dapat dibuka tanpa corrupt", done: false }
+      ]
+    }
+  },
+  automation: {
+    label: "Otomasi / RPA Pipeline",
+    data: {
+      id: "AUTO-",
+      title: "Pipeline Otomasi Pencocokan Data Antar Sistem",
+      priority: "P1 - High",
+      targetDate: "",
+      assignee: "Rama Arly Cendikiarizky",
+      estimateHours: 16,
+      problemStatement: "Rekonsiliasi manual antar dokumen memakan waktu berjam-jam dan rentan kekeliruan ketik.",
+      targetOutcome: "Skrip eksekusi otomatis mencocokkan field kunci dan menghasilkan laporan deviasi secara instan.",
+      inScope: [
+        "Script pembacaan dokumen input terstruktur",
+        "Engine logika pencocokan toleransi persentase",
+        "Output file rekonsiliasi berformat CSV/Excel"
+      ],
+      outScope: [
+        "Eksekusi auto-approval tanpa review PIC",
+        "Integrasi API eksternal non-standar"
+      ],
+      steps: [
+        { id: "s1", path: "scripts/matcher.py", task: "Susun algoritma pencocokan ID referensi dan nominal", done: false },
+        { id: "s2", path: "scripts/reporter.py", task: "Generate rekap temuan selisih", done: false }
+      ],
+      edgeCases: [
+        { trigger: "Nomor referensi memiliki spasi/tanda baca ganda", action: "Normalisasi string sebelum perbandingan" }
+      ],
+      dod: [
+        { id: "d1", label: "Akurasi pencocokan 100% pada data sampel uji", done: false },
+        { id: "d2", label: "Kecepatan eksekusi di bawah 1 menit per 1000 baris", done: false }
+      ]
+    }
+  }
+};
+
+const STORAGE_KEY_ACTIVE = "clean_taskspec_doc_blank";
+const STORAGE_KEY_HISTORY = "clean_taskspec_history_v1";
+
 export default function App() {
-  const [data, setData] = useState(() => {
+  const [data, setData] = useState<TaskSpecData>(() => {
     try {
-      const cached = localStorage.getItem("clean_taskspec_doc_blank");
+      const cached = localStorage.getItem(STORAGE_KEY_ACTIVE);
       if (cached) {
         const parsed = JSON.parse(cached);
         return {
@@ -51,19 +206,64 @@ export default function App() {
     return EMPTY_DATA;
   });
 
-  const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState("form"); // "form" | "preview"
+  const [history, setHistory] = useState<SavedDocRecord[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_HISTORY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("History parse error", e);
+    }
+    return [];
+  });
 
-  // Autosave
+  const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<"form" | "preview">("form");
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Autosave current document
   useEffect(() => {
     try {
-      localStorage.setItem("clean_taskspec_doc_blank", JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY_ACTIVE, JSON.stringify(data));
     } catch (e) {
       console.warn("Gagal menyimpan ke localStorage", e);
     }
   }, [data]);
 
-  const updateField = (field, val) => {
+  // Sync to history list on title/id updates
+  useEffect(() => {
+    const docId = data.id.trim() || "doc_active";
+
+    setHistory((prev) => {
+      const existingIdx = prev.findIndex((item) => item.docId === docId || (data.id && item.data.id === data.id));
+      const record: SavedDocRecord = {
+        docId: docId,
+        updatedAt: Date.now(),
+        data: data
+      };
+
+      let nextList: SavedDocRecord[];
+      if (existingIdx >= 0) {
+        nextList = [...prev];
+        nextList[existingIdx] = record;
+      } else {
+        nextList = [record, ...prev];
+      }
+
+      const trimmed = nextList.slice(0, 20);
+      try {
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
+      } catch (err) {
+        console.warn("History save error", err);
+      }
+      return trimmed;
+    });
+  }, [data.id, data.title, data.problemStatement]);
+
+  const updateField = (field: keyof TaskSpecData, val: any) => {
     setData((prev) => ({ ...prev, [field]: val }));
   };
 
@@ -71,25 +271,135 @@ export default function App() {
     setData(EMPTY_DATA);
   };
 
+  // Load from template (Fitur 3)
+  const handleSelectTemplate = (templateKey: string) => {
+    const tpl = TEMPLATES[templateKey];
+    if (tpl) {
+      setData({ ...tpl.data });
+    }
+  };
+
+  // Multi-doc history operations (Fitur 1)
+  const handleLoadDoc = (record: SavedDocRecord) => {
+    setData(record.data);
+    setIsHistoryOpen(false);
+  };
+
+  const handleDeleteHistoryDoc = (e: React.MouseEvent, docId: string) => {
+    e.stopPropagation();
+    setHistory((prev) => {
+      const filtered = prev.filter((item) => item.docId !== docId);
+      try {
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(filtered));
+      } catch (err) {
+        console.warn("History save error", err);
+      }
+      return filtered;
+    });
+  };
+
+  const handleCreateNewDoc = () => {
+    setData(EMPTY_DATA);
+    setIsHistoryOpen(false);
+  };
+
+  // Import JSON / Markdown (Fitur 2)
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
+
+        if (file.name.endsWith(".json")) {
+          const parsed = JSON.parse(text);
+          setData({
+            ...EMPTY_DATA,
+            ...parsed,
+            inScope: Array.isArray(parsed.inScope) ? parsed.inScope : [""],
+            outScope: Array.isArray(parsed.outScope) ? parsed.outScope : [""],
+            steps: Array.isArray(parsed.steps) ? parsed.steps : [{ id: "s1", path: "", task: "", done: false }],
+            edgeCases: Array.isArray(parsed.edgeCases) ? parsed.edgeCases : [{ trigger: "", action: "" }],
+            dod: Array.isArray(parsed.dod) ? parsed.dod : [{ id: "d1", label: "", done: false }]
+          });
+          alert("Dokumen JSON berhasil diimpor.");
+        } else {
+          const lines = text.split("\n");
+          let title = "";
+          let id = "";
+          const firstLine = lines[0] || "";
+          if (firstLine.startsWith("#")) {
+            const rawTitle = firstLine.replace(/^#+\s*/, "").trim();
+            const idMatch = rawTitle.match(/^\[(.*?)\]\s*(.*)$/);
+            if (idMatch) {
+              id = idMatch[1];
+              title = idMatch[2];
+            } else {
+              title = rawTitle;
+            }
+          }
+
+          setData((prev) => ({
+            ...prev,
+            id: id || prev.id,
+            title: title || prev.title,
+            problemStatement: prev.problemStatement || text.slice(0, 500)
+          }));
+          alert("Berkas Markdown terbaca dan judul berhasil diekstrak.");
+        }
+      } catch (err) {
+        alert("Gagal membaca berkas: Format tidak valid.");
+      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  // Export JSON (Fitur 2)
+  const handleExportJSON = () => {
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const rawId = data.id || "task";
+      const safeId = rawId.replace(new RegExp("[^a-zA-Z0-9_-]", "g"), "_");
+      link.href = url;
+      link.download = `${safeId}_spec.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error("Gagal mengekspor JSON", err);
+    }
+  };
+
   // List helpers
-  const handleArrayChange = (field, index, value) => {
+  const handleArrayChange = (field: "inScope" | "outScope", index: number, value: string) => {
     const list = [...data[field]];
     list[index] = value;
     setData((prev) => ({ ...prev, [field]: list }));
   };
 
-  const addArrayItem = (field) => {
+  const addArrayItem = (field: "inScope" | "outScope") => {
     setData((prev) => ({ ...prev, [field]: [...prev[field], ""] }));
   };
 
-  const removeArrayItem = (field, index) => {
+  const removeArrayItem = (field: "inScope" | "outScope", index: number) => {
     const list = data[field].filter((_, i) => i !== index);
     setData((prev) => ({ ...prev, [field]: list.length > 0 ? list : [""] }));
   };
 
   // Steps
   const addStep = () => {
-    const newStep = {
+    const newStep: TaskStep = {
       id: "s" + Date.now(),
       path: "",
       task: "",
@@ -98,14 +408,14 @@ export default function App() {
     setData((prev) => ({ ...prev, steps: [...prev.steps, newStep] }));
   };
 
-  const updateStep = (id, key, val) => {
+  const updateStep = (id: string, key: keyof TaskStep, val: any) => {
     setData((prev) => ({
       ...prev,
       steps: prev.steps.map((s) => (s.id === id ? { ...s, [key]: val } : s))
     }));
   };
 
-  const removeStep = (id) => {
+  const removeStep = (id: string) => {
     setData((prev) => ({
       ...prev,
       steps: prev.steps.filter((s) => s.id !== id)
@@ -120,13 +430,13 @@ export default function App() {
     }));
   };
 
-  const updateEdgeCase = (index, key, val) => {
+  const updateEdgeCase = (index: number, key: keyof EdgeCase, val: string) => {
     const list = [...data.edgeCases];
     list[index][key] = val;
     setData((prev) => ({ ...prev, edgeCases: list }));
   };
 
-  const removeEdgeCase = (index) => {
+  const removeEdgeCase = (index: number) => {
     setData((prev) => ({
       ...prev,
       edgeCases: prev.edgeCases.filter((_, i) => i !== index)
@@ -135,23 +445,38 @@ export default function App() {
 
   // DoD
   const addDod = () => {
-    const item = { id: "d" + Date.now(), label: "", done: false };
+    const item: DodItem = { id: "d" + Date.now(), label: "", done: false };
     setData((prev) => ({ ...prev, dod: [...prev.dod, item] }));
   };
 
-  const updateDod = (id, key, val) => {
+  const updateDod = (id: string, key: keyof DodItem, val: any) => {
     setData((prev) => ({
       ...prev,
       dod: prev.dod.map((d) => (d.id === id ? { ...d, [key]: val } : d))
     }));
   };
 
-  const removeDod = (id) => {
+  const removeDod = (id: string) => {
     setData((prev) => ({
       ...prev,
       dod: prev.dod.filter((d) => d.id !== id)
     }));
   };
+
+  // Progress metrics calculation (Fitur 4)
+  const stepsTotal = useMemo(() => data.steps.filter((s) => s.task.trim() || s.path.trim()).length, [data.steps]);
+  const stepsDone = useMemo(() => data.steps.filter((s) => (s.task.trim() || s.path.trim()) && s.done).length, [data.steps]);
+  const stepsPercent = stepsTotal > 0 ? Math.round((stepsDone / stepsTotal) * 100) : 0;
+
+  const dodTotal = useMemo(() => data.dod.filter((d) => d.label.trim()).length, [data.dod]);
+  const dodDone = useMemo(() => data.dod.filter((d) => d.label.trim() && d.done).length, [data.dod]);
+  const dodPercent = dodTotal > 0 ? Math.round((dodDone / dodTotal) * 100) : 0;
+
+  const overallPercent = useMemo(() => {
+    const totalItems = stepsTotal + dodTotal;
+    if (totalItems === 0) return 0;
+    return Math.round(((stepsDone + dodDone) / totalItems) * 100);
+  }, [stepsTotal, stepsDone, dodTotal, dodDone]);
 
   // Export to Markdown
   const markdownText = useMemo(() => {
@@ -240,7 +565,6 @@ export default function App() {
       const blob = new Blob([markdownText], { type: "text/markdown;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      // Use clean string replacement without problematic inline regex literals
       const rawId = data.id || "task";
       const safeId = rawId.replace(new RegExp("[^a-zA-Z0-9_-]", "g"), "_");
       link.href = url;
@@ -258,15 +582,76 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900 font-sans flex flex-col antialiased">
+      {/* Hidden File Input for Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".json,.md,.txt"
+        className="hidden"
+      />
+
       {/* Top Header Bar */}
       <header className="sticky top-0 z-30 bg-white border-b border-stone-200 px-4 sm:px-6 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-bold text-sm tracking-tight text-stone-900">PRD</span>
+          <span className="font-bold text-sm tracking-tight text-stone-900">TaskSpec</span>
           <span className="text-[11px] text-stone-400 font-mono hidden sm:inline">Execution Document Studio</span>
+          
+          {/* Multi-Doc History Toggle Button */}
+          <button
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            className="ml-2 px-2.5 py-1 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Buka Daftar Riwayat Dokumen"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-stone-500" />
+            <span className="hidden sm:inline">Draf</span>
+            <span className="bg-stone-200 text-stone-700 text-[10px] font-mono px-1.5 py-0.2 rounded-full">
+              {history.length}
+            </span>
+          </button>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Template Quick Starter Dropdown */}
+          <div className="hidden lg:flex items-center gap-1.5 bg-stone-50 border border-stone-200 rounded px-2 py-1 text-xs">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleSelectTemplate(e.target.value);
+                  e.target.value = "";
+                }
+              }}
+              className="bg-transparent text-stone-700 text-xs focus:outline-none cursor-pointer"
+              defaultValue=""
+            >
+              <option value="" disabled>Pilih Template...</option>
+              {Object.entries(TEMPLATES).map(([key, tpl]) => (
+                <option key={key} value={key}>{tpl.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Import / Export JSON */}
+          <button
+            onClick={handleImportClick}
+            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Impor Dokumen (JSON / MD)"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Impor</span>
+          </button>
+
+          <button
+            onClick={handleExportJSON}
+            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Ekspor Data JSON"
+          >
+            <FileCode className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">JSON</span>
+          </button>
+
           {/* Mobile view toggle */}
           <div className="flex md:hidden bg-stone-100 p-0.5 rounded border border-stone-200 text-xs">
             <button
@@ -291,7 +676,7 @@ export default function App() {
 
           <button
             onClick={handleReset}
-            className="px-2.5 py-1.5 text-xs text-stone-600 hover:text-rose-600 hover:bg-stone-50 rounded border border-stone-200 transition-colors flex items-center gap-1.5"
+            className="px-2.5 py-1.5 text-xs text-stone-600 hover:text-rose-600 hover:bg-stone-50 rounded border border-stone-200 transition-colors flex items-center gap-1.5 cursor-pointer"
             title="Kosongkan formulir"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -300,7 +685,7 @@ export default function App() {
 
           <button
             onClick={handleCopy}
-            className="px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-800 rounded flex items-center gap-1.5 shadow-xs transition-colors"
+            className="px-3 py-1.5 text-xs font-medium bg-stone-900 text-white hover:bg-stone-800 rounded flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
             <Copy className="w-3.5 h-3.5" />
             <span>{copied ? "Tersalin!" : "Salin MD"}</span>
@@ -308,7 +693,7 @@ export default function App() {
 
           <button
             onClick={handleDownload}
-            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors"
+            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Unduh .md"
           >
             <Download className="w-3.5 h-3.5" />
@@ -317,7 +702,7 @@ export default function App() {
 
           <button
             onClick={() => window.print()}
-            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors"
+            className="px-2.5 py-1.5 text-xs text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
             title="Cetak atau PDF"
           >
             <Printer className="w-3.5 h-3.5" />
@@ -326,12 +711,111 @@ export default function App() {
         </div>
       </header>
 
+      {/* Multi-Document Drawer Modal */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-xs flex justify-end">
+          <div className="bg-white w-full max-w-sm h-full shadow-2xl flex flex-col p-4 border-l border-stone-200 animate-in slide-in-from-right duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-stone-700" />
+                <h3 className="font-semibold text-sm text-stone-900">Riwayat Draf Dokumen</h3>
+              </div>
+              <button
+                onClick={() => setIsHistoryOpen(false)}
+                className="p-1 text-stone-400 hover:text-stone-700 rounded cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="pt-3 pb-2">
+              <button
+                onClick={handleCreateNewDoc}
+                className="w-full py-1.5 px-3 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Buat Dokumen Baru</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-stone-100 space-y-1">
+              {history.length === 0 ? (
+                <div className="py-8 text-center text-xs text-stone-400">
+                  Belum ada draf tersimpan di riwayat.
+                </div>
+              ) : (
+                history.map((item) => {
+                  const isActive = data.id === item.data.id && data.title === item.data.title;
+                  return (
+                    <div
+                      key={item.docId}
+                      onClick={() => handleLoadDoc(item)}
+                      className={`p-2.5 rounded-md cursor-pointer transition-colors flex items-center justify-between group ${
+                        isActive ? "bg-stone-100 border border-stone-300" : "hover:bg-stone-50"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          {item.data.id && (
+                            <span className="font-mono text-[10px] px-1 bg-stone-200 text-stone-700 rounded">
+                              {item.data.id}
+                            </span>
+                          )}
+                          <h4 className="text-xs font-medium text-stone-900 truncate">
+                            {item.data.title || "Spesifikasi Tanpa Judul"}
+                          </h4>
+                        </div>
+                        <p className="text-[10px] text-stone-400">
+                          {new Date(item.updatedAt).toLocaleDateString("id-ID", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteHistoryDoc(e, item.docId)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-rose-600 transition-opacity cursor-pointer"
+                        title="Hapus draf ini"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Workspace Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         {/* Form Editor Pane */}
         <div className={`space-y-4 ${activeTab === "form" ? "block" : "hidden md:block"}`}>
           {/* Metadata Block */}
           <div className="bg-white rounded-lg border border-stone-200 p-4 space-y-3 shadow-xs">
+            {/* Mobile Template Selector */}
+            <div className="lg:hidden pb-2 border-b border-stone-100 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-stone-500">Preset Template:</span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleSelectTemplate(e.target.value);
+                    e.target.value = "";
+                  }
+                }}
+                className="bg-stone-50 border border-stone-200 rounded px-2 py-1 text-xs"
+                defaultValue=""
+              >
+                <option value="" disabled>Pilih...</option>
+                {Object.entries(TEMPLATES).map(([key, tpl]) => (
+                  <option key={key} value={key}>{tpl.label}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[11px] font-medium text-stone-500 mb-1">ID Tiket</label>
@@ -451,7 +935,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => addArrayItem("inScope")}
-                  className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1"
+                  className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3 h-3" /> Tambah
                 </button>
@@ -470,7 +954,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => removeArrayItem("inScope", idx)}
-                      className="p-1 text-stone-400 hover:text-rose-600"
+                      className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -488,7 +972,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => addArrayItem("outScope")}
-                  className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1"
+                  className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3 h-3" /> Tambah
                 </button>
@@ -507,7 +991,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => removeArrayItem("outScope", idx)}
-                      className="p-1 text-stone-400 hover:text-rose-600"
+                      className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -520,13 +1004,20 @@ export default function App() {
           {/* Technical Execution Steps */}
           <div className="bg-white rounded-lg border border-stone-200 p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-stone-800 uppercase tracking-wide">
-                4. Rencana Langkah Teknis
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-stone-800 uppercase tracking-wide">
+                  4. Rencana Langkah Teknis
+                </h3>
+                {stepsTotal > 0 && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
+                    {stepsDone}/{stepsTotal} ({stepsPercent}%)
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={addStep}
-                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1"
+                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3 h-3" /> Tambah Langkah
               </button>
@@ -549,7 +1040,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => removeStep(s.id)}
-                      className="p-1 text-stone-400 hover:text-rose-600"
+                      className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -575,7 +1066,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={addEdgeCase}
-                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1"
+                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3 h-3" /> Tambah Skenario
               </button>
@@ -608,7 +1099,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => removeEdgeCase(index)}
-                      className="p-1 text-stone-400 hover:text-rose-600 mb-0.5"
+                      className="p-1 text-stone-400 hover:text-rose-600 mb-0.5 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -621,13 +1112,20 @@ export default function App() {
           {/* Definition of Done (DoD) */}
           <div className="bg-white rounded-lg border border-stone-200 p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-stone-800 uppercase tracking-wide">
-                6. Kriteria Selesai (Definition of Done)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-stone-800 uppercase tracking-wide">
+                  6. Kriteria Selesai (Definition of Done)
+                </h3>
+                {dodTotal > 0 && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-stone-100 text-stone-600">
+                    {dodDone}/{dodTotal} ({dodPercent}%)
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={addDod}
-                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1"
+                className="text-[11px] text-stone-600 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3 h-3" /> Tambah Kriteria
               </button>
@@ -646,7 +1144,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => removeDod(item.id)}
-                    className="p-1 text-stone-400 hover:text-rose-600"
+                    className="p-1 text-stone-400 hover:text-rose-600 cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -660,7 +1158,7 @@ export default function App() {
         <div className={`sticky top-16 ${activeTab === "preview" ? "block" : "hidden md:block"}`}>
           <div className="bg-white rounded-lg border border-stone-200 shadow-sm p-6 sm:p-8 space-y-6 print:p-0 print:border-none print:shadow-none">
             {/* Header / Meta */}
-            <div className="border-b border-stone-200 pb-4 space-y-2">
+            <div className="border-b border-stone-200 pb-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs font-semibold text-stone-500">
                   {data.id ? data.id : "ID TIKET"}
@@ -685,6 +1183,26 @@ export default function App() {
                   </span>
                 )}
               </div>
+
+              {/* Progress Summary Metric (Fitur 4) */}
+              {(stepsTotal > 0 || dodTotal > 0) && (
+                <div className="pt-2">
+                  <div className="flex items-center justify-between text-[11px] text-stone-600 mb-1">
+                    <span className="font-medium">Total Progres Eksekusi</span>
+                    <span className="font-mono font-bold text-stone-900">{overallPercent}%</span>
+                  </div>
+                  <div className="w-full bg-stone-100 rounded-full h-2 overflow-hidden border border-stone-200/80">
+                    <div
+                      className="bg-stone-900 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${overallPercent}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] text-stone-400 mt-1 font-mono">
+                    <span>Langkah: {stepsDone}/{stepsTotal}</span>
+                    <span>DoD: {dodDone}/{dodTotal}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 1. Problem & Outcome */}
@@ -755,9 +1273,16 @@ export default function App() {
 
             {/* 3. Steps Checklist */}
             <section className="space-y-2 text-xs">
-              <h3 className="font-semibold text-stone-900 uppercase tracking-wide text-[11px]">
-                3. Rencana Eksekusi Teknis
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-stone-900 uppercase tracking-wide text-[11px]">
+                  3. Rencana Eksekusi Teknis
+                </h3>
+                {stepsTotal > 0 && (
+                  <span className="text-[10px] font-mono text-stone-500">
+                    {stepsDone} dari {stepsTotal} selesai
+                  </span>
+                )}
+              </div>
               <div className="space-y-1.5 pt-1">
                 {data.steps.some((s) => s.task.trim() || s.path.trim()) ? (
                   data.steps
@@ -834,9 +1359,16 @@ export default function App() {
 
             {/* 5. Definition of Done */}
             <section className="space-y-2 text-xs">
-              <h3 className="font-semibold text-stone-900 uppercase tracking-wide text-[11px]">
-                5. Kriteria Verifikasi Selesai (DoD)
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-stone-900 uppercase tracking-wide text-[11px]">
+                  5. Kriteria Verifikasi Selesai (DoD)
+                </h3>
+                {dodTotal > 0 && (
+                  <span className="text-[10px] font-mono text-stone-500">
+                    {dodDone} dari {dodTotal} selesai
+                  </span>
+                )}
+              </div>
               <div className="space-y-1 pt-1">
                 {data.dod.some((d) => d.label.trim()) ? (
                   data.dod
